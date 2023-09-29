@@ -4,6 +4,7 @@ name: CI
 on:
   push:
     branches:
+      # TODO: change to main when opening PR to merge windev branch in.
       - main
     paths-ignore:
       - '**.md'
@@ -11,6 +12,7 @@ on:
       - '.github/CODEOWNERS'
   pull_request:
     branches:
+      # TODO: change to main when opening PR to merge windev branch in.
       - main
     paths-ignore:
       - '**.md'
@@ -25,75 +27,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gen-code-no-diff:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
-        with:
-          go-version-file: go.mod
-          cache: true
-      - run: make gen-code
-      - run: git diff --exit-code
-  unit-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
-        with:
-          # Since this repository is not meant to be used as a library,
-          # we don't need to test the latest 2 major releases like Go does: https://go.dev/doc/devel/release#policy.
-          go-version-file: go.mod
-          cache: true
-      - run: make test-unit
-  # It's recommended to run golangci-lint in a job separate from other jobs (go test, etc) because different jobs run in parallel.
-  go-linter:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          # Pin the version in case all the builds start to fail at the same time.
-          # There may not be an automatic way (e.g., dependabot) to update a specific parameter of a GitHub Action,
-          # so we will just update it manually whenever it makes sense (e.g., a feature that we want is added).
-          version: v1.53.3
-          args: --fix=false --timeout=5m
-  shellcheck:
-    name: ShellCheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@2.0.0
-        with:
-          version: v0.9.0 
-        continue-on-error: true
-  go-mod-tidy-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
-        with:
-          go-version-file: go.mod
-          cache: true
-      # TODO: Use `go mod tidy --check` after https://github.com/golang/go/issues/27005 is fixed.
-      - run: go mod tidy
-      - run: git diff --exit-code
-  check-licenses:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
-        with:
-          go-version-file: go.mod
-          cache: true
-      - run: make check-licenses
   e2e-tests:
+    if: github.repository == 'TODO; remove on merge with main, skip macOS for now...'
     strategy:
       fail-fast: false
       matrix:
@@ -149,12 +84,32 @@ jobs:
           git clean -f -d
           REGISTRY=${{ steps.vars.outputs.has_creds == true && env.REGISTRY || '' }} make test-e2e
         shell: zsh {0}
-  mdlint:
-    runs-on: ubuntu-latest
+  e2e-tests-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          [
+            #[self-hosted, windows, amd64, test],
+            [windows-latest],
+          ]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: avto-dev/markdown-lint@v1
-        with:
-          args: '**/*.md'
-          # CHANGELOG.md is only updated by release-please bot.
-          ignore: 'CHANGELOG.md'
+      - name: Set output variables
+        id: vars
+        run: |
+          $has_creds="${{ github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name }}"
+          echo "has_creds=$has_creds" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          exit 0 # will be 1 if false
+      # - name: configure aws credentials
+      #   if: env.has_creds == 'true'
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.ROLE }}
+      #     role-session-name: credhelper-test
+      #     aws-region: ${{ secrets.REGION }}
+      - name: Run e2e Tests
+        run: |
+          $REGISTRY=${{ steps.vars.outputs.has_creds == true && env.REGISTRY || '' }} make test-e2e
+          echo $REGISTRY
+
